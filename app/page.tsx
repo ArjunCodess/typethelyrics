@@ -1,119 +1,21 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect, memo } from "react";
-import { Keyboard, RotateCcw, Info, Music, SquareX, Timer as TimerIcon, Type, Play, Pause } from "lucide-react";
+import { useState, useCallback, useRef, useEffect } from "react";
+import { Keyboard, RotateCcw, Info, Music, SquareX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type React from "react";
+import type { LyricsResponse, TrackDetails } from "@/components/types";
+import URLInput from "@/components/game/url-input";
+import SpotifyPlayer from "@/components/spotify/spotify-player";
+import TypingBox from "@/components/typing/typing-box";
+import LyricsBox from "@/components/lyrics/lyrics-box";
 
-interface LyricsResponse {
-  lyrics: string;
-  syncType: string;
-  syncedLyrics: { startTimeMs: number; words: string; }[];
-  trackDetails: {
-    track_name: string;
-    track_artist: string;
-    track_album: string;
-    track_duration: string;
-  };
-}
-
-interface TrackDetails {
-  track_name: string;
-  track_artist: string;
-  track_album: string;
-  track_duration: string;
-}
-
-// Create a memoized Timer component
-const Timer = memo(({ elapsedTime }: { elapsedTime: number }) => {
-  const formatTime = (seconds: number) => {
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-  };
-
-  return (
-    <div className="flex items-center gap-2 text-primary">
-      <TimerIcon className="w-4 h-4" />
-      <span className="font-mono text-lg">{formatTime(elapsedTime)}</span>
-    </div>
-  );
-});
-
-Timer.displayName = 'Timer';
-
-// Create a memoized URL Input component
-const URLInput = memo(({ 
-  spotifyUrl, 
-  onUrlChange, 
-  onSubmit, 
-  loading, 
-  error,
-  filters,
-  onFilterChange 
-}: { 
-  spotifyUrl: string;
-  onUrlChange: (url: string) => void;
-  onSubmit: (e: React.FormEvent) => void;
-  loading: boolean;
-  error: string | null;
-  filters: { lowercase: boolean; noPunctuation: boolean };
-  onFilterChange: (key: 'lowercase' | 'noPunctuation') => void;
-}) => {
-  return (
-    <div className="flex flex-col items-center gap-4 max-w-4xl mx-auto">
-      <form onSubmit={onSubmit} className="w-full">
-        <div className="flex flex-col gap-4">
-          <input
-            type="text"
-            value={spotifyUrl}
-            onChange={(e) => onUrlChange(e.target.value)}
-            placeholder="Enter Spotify song URL..."
-            className="w-full p-4 rounded-lg bg-[#2c2e31] text-text border-2 border-primary focus:outline-none focus:border-primary/80"
-          />
-          <div className="flex gap-2 mb-4">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onFilterChange('lowercase')}
-              className={`w-full gap-2 ${filters.lowercase ? 'bg-primary text-background' : 'bg-[#2c2e31]'}`}
-            >
-              <Type className="w-4 h-4" />
-              Lowercase: {filters.lowercase ? 'On' : 'Off'}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onFilterChange('noPunctuation')}
-              className={`w-full gap-2 ${filters.noPunctuation ? 'bg-primary text-background' : 'bg-[#2c2e31]'}`}
-            >
-              <Type className="w-4 h-4" />
-              No Punctuation: {filters.noPunctuation ? 'On' : 'Off'}
-            </Button>
-          </div>
-          <Button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-primary text-background hover:bg-primary/90"
-          >
-            {loading ? "Loading..." : "Get Lyrics"}
-          </Button>
-        </div>
-      </form>
-      {error && <div className="text-error text-sm">{error}</div>}
-    </div>
-  );
-});
-
-URLInput.displayName = 'URLInput';
-
-export default function TypeTheLyrics() {
+export default function Home() {
   const [spotifyUrl, setSpotifyUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [trackDetails, setTrackDetails] = useState<TrackDetails | null>(null);
 
-  // Typing test states
   const [words, setWords] = useState<string[][]>([]);
   const [input, setInput] = useState("");
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
@@ -135,7 +37,6 @@ export default function TypeTheLyrics() {
   const lastPositionUpdate = useRef<number>(0);
   const lyricsContainerRef = useRef<HTMLDivElement>(null);
 
-  // Add this new ref for the typing box container
   const typingContainerRef = useRef<HTMLDivElement>(null);
 
   const [filters, setFilters] = useState({
@@ -147,7 +48,6 @@ export default function TypeTheLyrics() {
   const [spotifyTrackId, setSpotifyTrackId] = useState<string | null>(null);
   const spotifyEmbedRef = useRef<HTMLIFrameElement>(null);
 
-  // Function to scroll current lyric into view
   const scrollLyricIntoView = useCallback((index: number) => {
     if (!lyricsContainerRef.current) return;
     
@@ -158,7 +58,6 @@ export default function TypeTheLyrics() {
       const containerHeight = container.clientHeight;
       const lyricHeight = lyricElement.clientHeight;
       
-      // Calculate position to center the lyric
       const scrollPosition = lyricElement.offsetTop - (containerHeight / 2) + (lyricHeight / 2);
       
       container.scrollTo({
@@ -168,17 +67,14 @@ export default function TypeTheLyrics() {
     }
   }, []);
 
-  // Memoize filter change handler
   const handleFilterChange = useCallback((key: 'lowercase' | 'noPunctuation') => {
     setFilters(f => ({ ...f, [key]: !f[key] }));
   }, []);
 
-  // Memoize URL change handler
   const handleUrlChange = useCallback((url: string) => {
     setSpotifyUrl(url);
   }, []);
 
-  // Memoize position update logic
   const handlePositionUpdate = useCallback((position: number) => {
     const now = Date.now();
     if (now - lastPositionUpdate.current > 50) {
@@ -291,24 +187,24 @@ export default function TypeTheLyrics() {
     }
   };
 
-  // Process text based on filters
-  const processText = (text: string) => {
-    let processed = text;
-    if (filters.lowercase) {
-      processed = processed.toLowerCase();
-    }
-    if (filters.noPunctuation) {
-      processed = processed.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "");
-    }
-    return processed;
-  };
-
   // Initialize test
   const initializeTest = useCallback((lyrics: string, syncedLyrics?: { startTimeMs: number; words: string; }[]) => {
     if (!lyrics) {
       setError("No lyrics found for this song");
       return;
     }
+
+    // Move processText inside the callback
+    const processText = (text: string) => {
+      let processed = text;
+      if (filters.lowercase) {
+        processed = processed.toLowerCase();
+      }
+      if (filters.noPunctuation) {
+        processed = processed.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "");
+      }
+      return processed;
+    };
 
     if (syncedLyrics && syncedLyrics.length > 0) {
       setSyncedLyrics(syncedLyrics);
@@ -627,7 +523,7 @@ export default function TypeTheLyrics() {
 
       <main className="w-full max-w-7xl">
         {!isTestActive ? (
-          <URLInput 
+          <URLInput
             spotifyUrl={spotifyUrl}
             onUrlChange={handleUrlChange}
             onSubmit={handleUrlSubmit}
@@ -637,141 +533,41 @@ export default function TypeTheLyrics() {
             onFilterChange={handleFilterChange}
           />
         ) : (
-          <>
-            <div className="flex justify-between items-center mb-4">
-              <div className="flex items-center gap-4">
-                <Timer elapsedTime={elapsedTime} />
-                {spotifyTrackId && (
-                  <Button
-                    onClick={togglePlay}
-                    variant="outline"
-                    size="sm"
-                    className="gap-2"
-                  >
-                    {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                    {isPlaying ? 'Pause' : 'Play'}
-                  </Button>
-                )}
-              </div>
-            </div>
-
-            {/* Spotify Player */}
+          <div className="flex flex-col gap-4">
             {spotifyTrackId && (
-              <div className="mb-4 h-[80px]">
-                <iframe
-                  ref={spotifyEmbedRef}
-                  src={`https://open.spotify.com/embed/track/${spotifyTrackId}?utm_source=generator&theme=0`}
-                  width="100%"
-                  height="80"
-                  allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-                  loading="lazy"
-                  className="rounded-lg"
-                />
-              </div>
+              <SpotifyPlayer
+                spotifyTrackId={spotifyTrackId}
+                isPlaying={isPlaying}
+                onTogglePlay={togglePlay}
+                spotifyEmbedRef={spotifyEmbedRef}
+              />
             )}
 
             {/* Main content area with typing box and lyrics progression */}
             <div className="flex gap-4">
-              {/* Typing Box */}
-              <div 
-                className="w-1/2 flex-1 relative mb-8 p-4 bg-[#2c2e31] rounded-lg shadow-lg overflow-hidden"
-                onClick={() => inputRef.current?.focus()}
-              >
-                <div 
-                  ref={typingContainerRef}
-                  className="text-2xl leading-relaxed whitespace-pre-wrap max-h-[300px] overflow-y-auto scrollbar-hide"
-                  onMouseUp={(e) => {
-                    e.preventDefault();
-                    inputRef.current?.focus();
-                  }}
-                >
-                  {/* Add empty space at the top to allow first lines to be centered */}
-                  <div className="h-[150px]" />
-                  {words.map((line, lineIndex) => (
-                    <div key={lineIndex} className="mb-4">
-                      {line.map((word, wordIndex) => {
-                        const globalWordIndex = words
-                          .slice(0, lineIndex)
-                          .reduce((sum, line) => sum + line.length, 0) + wordIndex;
-                        return (
-                          <span
-                            key={`${lineIndex}-${wordIndex}`}
-                            className="mr-2"
-                            data-word-index={globalWordIndex}
-                          >
-                            {word.split("").map((char, charIndex) => (
-                              <span
-                                key={charIndex}
-                                className={getCharacterClass(
-                                  globalWordIndex,
-                                  charIndex
-                                )}
-                              >
-                                {char}
-                              </span>
-                            ))}
-                          </span>
-                        );
-                      })}
-                    </div>
-                  ))}
-                  {/* Add empty space at the bottom to allow last lines to be centered */}
-                  <div className="h-[150px]" />
-                </div>
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={input}
-                  onChange={handleInputChange}
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-default"
-                  autoFocus
-                  disabled={isFinished || !canStartTyping}
-                  placeholder={canStartTyping ? "Type the lyrics..." : "Waiting for lyrics to start..."}
-                  onBlur={() => {
-                    if (isTestActive && !isFinished && canStartTyping) {
-                      inputRef.current?.focus();
-                    }
-                  }}
-                />
-              </div>
+              <TypingBox
+                words={words}
+                currentWordIndex={currentWordIndex}
+                currentCharIndex={currentCharIndex}
+                correctChars={correctChars}
+                input={input}
+                isFinished={isFinished}
+                canStartTyping={canStartTyping}
+                typingContainerRef={typingContainerRef}
+                inputRef={inputRef}
+                onInputChange={handleInputChange}
+                getCharacterClass={getCharacterClass}
+              />
 
-              {/* Lyrics Progression Box */}
-              <div className="w-1/2 flex-1 relative mb-8 p-4 bg-[#2c2e31] rounded-lg shadow-lg overflow-hidden">
-                <div 
-                  ref={lyricsContainerRef}
-                  className="text-2xl whitespace-pre-wrap max-h-[300px] overflow-y-auto scroll-smooth scrollbar-hide"
-                  style={{ scrollBehavior: 'smooth' }}
-                >
-                  {/* Add empty space at the top to allow first lyrics to be centered */}
-                  <div className="h-[150px]" />
-                  {syncedLyrics.map((lyric, index) => {
-                    const isCurrentLyric = currentPosition >= lyric.startTimeMs && 
-                      (!syncedLyrics[index + 1] || currentPosition < syncedLyrics[index + 1].startTimeMs);
-                    const isPastLyric = syncedLyrics[index + 1] && currentPosition >= syncedLyrics[index + 1].startTimeMs;
-                    
-                    return (
-                      <div
-                        key={index}
-                        className={`mb-4 transition-all duration-200 ${
-                          isCurrentLyric 
-                            ? 'text-text text-primary scale-105 origin-left'
-                            : isPastLyric
-                              ? 'text-textDark/50'
-                              : 'text-textDark'
-                        }`}
-                      >
-                        {lyric.words}
-                      </div>
-                    );
-                  })}
-                  {/* Add empty space at the bottom to allow last lyrics to be centered */}
-                  <div className="h-[150px]" />
-                </div>
-              </div>
+              <LyricsBox
+                syncedLyrics={syncedLyrics}
+                currentPosition={currentPosition}
+                lyricsContainerRef={lyricsContainerRef}
+              />
             </div>
 
             {!isFinished ? (
-              <div className="flex justify-between items-center mb-4">
+              <div className="flex justify-between items-center">
                 <div className="text-sm text-textDark flex items-center gap-2">
                   <Info className="w-4 h-4" />
                   <span>
@@ -794,28 +590,19 @@ export default function TypeTheLyrics() {
               <div className="text-center">
                 <div className="grid grid-cols-3 gap-4 mb-6">
                   <div className="p-4 rounded-lg bg-[#2c2e31] shadow-lg">
-                    <div
-                      className="text-3xl font-bold text-primary"
-                      style={{ color: "#64FFDA" }}
-                    >
+                    <div className="text-3xl font-bold text-primary">
                       {wpm}
                     </div>
                     <div className="text-sm text-textDark">WPM</div>
                   </div>
                   <div className="p-4 rounded-lg bg-[#2c2e31] shadow-lg">
-                    <div
-                      className="text-3xl font-bold text-primary"
-                      style={{ color: "#64FFDA" }}
-                    >
+                    <div className="text-3xl font-bold text-primary">
                       {rawWPM}
                     </div>
                     <div className="text-sm text-textDark">Raw WPM</div>
                   </div>
                   <div className="p-4 rounded-lg bg-[#2c2e31] shadow-lg">
-                    <div
-                      className="text-3xl font-bold text-primary"
-                      style={{ color: "#64FFDA" }}
-                    >
+                    <div className="text-3xl font-bold text-primary">
                       {accuracy}%
                     </div>
                     <div className="text-sm text-textDark">Accuracy</div>
@@ -841,7 +628,7 @@ export default function TypeTheLyrics() {
                 </div>
               </div>
             )}
-          </>
+          </div>
         )}
       </main>
 
