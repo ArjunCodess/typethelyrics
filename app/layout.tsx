@@ -28,11 +28,16 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+        {children}
         <Script
           crossOrigin="anonymous"
           src="//unpkg.com/react-scan/dist/auto.global.js"
         />
-        {children}
+        <Script
+          defer
+          data-domain="typethelyrics.vercel.app"
+          src="https://getanalyzr.vercel.app/tracking-script.js"
+        />
       </body>
     </html>
   );
