@@ -7,8 +7,8 @@ import type React from "react";
 import type { LyricsResponse, TrackDetails } from "@/components/types";
 import URLInput from "@/components/game/url-input";
 import SpotifyPlayer from "@/components/spotify/spotify-player";
-import TypingBox from "@/components/typing/typing-box";
 import LyricsBox from "@/components/lyrics/lyrics-box";
+import MemoizedTypingContainer from "@/components/typing/memoized-typing-box";
 
 export default function Home() {
   const [spotifyUrl, setSpotifyUrl] = useState("");
@@ -27,17 +27,14 @@ export default function Home() {
   const [accuracy, setAccuracy] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const [isTestActive, setIsTestActive] = useState(false);
-  const [testDuration, setTestDuration] = useState<number | null>(null);
-  const [elapsedTime, setElapsedTime] = useState(0);
-  const timerInterval = useRef<NodeJS.Timeout | null>(null);
+  const [, setTestDuration] = useState<number | null>(null);
+  const [, setElapsedTime] = useState(0);
   const [rawWPM, setRawWPM] = useState(0);
   const [currentPosition, setCurrentPosition] = useState(0);
   const [canStartTyping, setCanStartTyping] = useState(false);
   const [syncedLyrics, setSyncedLyrics] = useState<{ startTimeMs: number; words: string; }[]>([]);
   const lastPositionUpdate = useRef<number>(0);
   const lyricsContainerRef = useRef<HTMLDivElement>(null);
-
-  const typingContainerRef = useRef<HTMLDivElement>(null);
 
   const [filters, setFilters] = useState({
     lowercase: false,
@@ -77,14 +74,17 @@ export default function Home() {
 
   const handlePositionUpdate = useCallback((position: number) => {
     const now = Date.now();
+    // Only update if enough time has passed (50ms throttle)
     if (now - lastPositionUpdate.current > 50) {
-      setCurrentPosition(position);
+      // Batch the state updates
+      requestAnimationFrame(() => {
+        setCurrentPosition(position);
+        if (syncedLyrics.length > 0) {
+          const shouldStartTyping = position >= syncedLyrics[0].startTimeMs;
+          setCanStartTyping(shouldStartTyping);
+        }
+      });
       lastPositionUpdate.current = now;
-      
-      if (syncedLyrics.length > 0) {
-        const shouldStartTyping = position >= syncedLyrics[0].startTimeMs;
-        setCanStartTyping(shouldStartTyping);
-      }
     }
   }, [syncedLyrics]);
 
@@ -117,75 +117,54 @@ export default function Home() {
     }
   }, [currentPosition, syncedLyrics, scrollLyricIntoView]);
 
-  const finishTest = () => {
-    if (startTime) {
-      if (timerInterval.current) {
-        clearInterval(timerInterval.current);
-      }
-      const timeInSeconds = testDuration || elapsedTime;
-      const timeInMinutes = timeInSeconds / 60;
+  // Memoize getCharacterOffset
+  const getCharacterOffset = useCallback((wordIndex: number) => 
+    words.flat().slice(0, wordIndex).join(" ").length + (wordIndex > 0 ? 1 : 0)
+  , [words]);
 
-      // Calculate total characters typed and correct characters
-      let totalCharactersTyped = 0;
-      let correctCharactersTyped = 0;
+  // Memoize finishTest
+  const finishTest = useCallback(() => {
+    if (!startTime) return;
 
-      // Go through each word up to the current word
-      for (let wordIdx = 0; wordIdx < currentWordIndex; wordIdx++) {
-        const word = words.flat()[wordIdx];
-        const offset = getCharacterOffset(wordIdx);
+    const endTime = Date.now();
+    const timeInSeconds = Math.max((endTime - startTime) / 1000, 1);
+    const timeInMinutes = timeInSeconds / 60;
 
-        // Count characters in completed words
-        for (let charIdx = 0; charIdx < word.length; charIdx++) {
-          totalCharactersTyped++;
-          if (correctChars[offset + charIdx]) {
-            correctCharactersTyped++;
-          }
-        }
-        // Count the space after each word (except the last word)
-        if (wordIdx < currentWordIndex - 1) {
-          totalCharactersTyped++;
-          correctCharactersTyped++; // Space is always counted as correct
-        }
-      }
+    let totalCharactersTyped = 0;
+    let correctCharactersTyped = 0;
 
-      // Add characters from the current word
-      if (currentWordIndex < words.flat().length) {
-        const currentWord = words.flat()[currentWordIndex];
-        const offset = getCharacterOffset(currentWordIndex);
-        for (
-          let charIdx = 0;
-          charIdx < Math.min(input.length, currentWord.length);
-          charIdx++
-        ) {
-          totalCharactersTyped++;
-          if (correctChars[offset + charIdx]) {
-            correctCharactersTyped++;
-          }
+    for (let wordIdx = 0; wordIdx <= currentWordIndex; wordIdx++) {
+      const word = words.flat()[wordIdx];
+      if (!word) continue;
+      
+      const offset = getCharacterOffset(wordIdx);
+      const charLimit = wordIdx === currentWordIndex ? input.length : word.length;
+      
+      for (let charIdx = 0; charIdx < charLimit; charIdx++) {
+        totalCharactersTyped++;
+        if (correctChars[offset + charIdx]) {
+          correctCharactersTyped++;
         }
       }
-
-      // Calculate accuracy as a percentage of correct characters
-      const calculatedAccuracy =
-        totalCharactersTyped > 0
-          ? Math.round((correctCharactersTyped / totalCharactersTyped) * 100)
-          : 0;
-
-      // Calculate raw WPM (5 characters = 1 word)
-      const calculatedRawWPM = Math.round(
-        totalCharactersTyped / 5 / timeInMinutes
-      );
-
-      // Calculate WPM with accuracy penalty
-      const calculatedWPM = Math.round(
-        calculatedRawWPM * (calculatedAccuracy / 100)
-      );
-
-      setRawWPM(calculatedRawWPM);
-      setWPM(calculatedWPM);
-      setAccuracy(calculatedAccuracy);
-      setIsFinished(true);
+      
+      if (wordIdx < currentWordIndex) {
+        totalCharactersTyped++;
+        correctCharactersTyped++;
+      }
     }
-  };
+
+    const calculatedAccuracy = totalCharactersTyped > 0
+      ? Math.round((correctCharactersTyped / totalCharactersTyped) * 100)
+      : 0;
+
+    const calculatedRawWPM = Math.round(totalCharactersTyped / 5 / timeInMinutes);
+    const calculatedWPM = Math.round(calculatedRawWPM * (calculatedAccuracy / 100));
+
+    setRawWPM(Math.min(calculatedRawWPM, 500));
+    setWPM(Math.min(calculatedWPM, 500));
+    setAccuracy(calculatedAccuracy);
+    setIsFinished(true);
+  }, [startTime, currentWordIndex, words, input.length, correctChars, getCharacterOffset]);
 
   // Initialize test
   const initializeTest = useCallback((lyrics: string, syncedLyrics?: { startTimeMs: number; words: string; }[]) => {
@@ -349,14 +328,6 @@ export default function Home() {
     }
   };
 
-  // Get character offset
-  const getCharacterOffset = (wordIndex: number) => {
-    return (
-      words.flat().slice(0, wordIndex).join(" ").length +
-      (wordIndex > 0 ? 1 : 0)
-    );
-  };
-
   // Control Spotify player
   const controlSpotifyPlayer = (command: 'toggle' | 'play' | 'pause') => {
     if (spotifyEmbedRef.current?.contentWindow) {
@@ -364,98 +335,8 @@ export default function Home() {
     }
   };
 
-  // Add this new function to scroll the typing box
-  const scrollTypingBoxToCurrentWord = useCallback(() => {
-    if (!typingContainerRef.current) return;
-    
-    const container = typingContainerRef.current;
-    const wordElements = container.querySelectorAll('span[data-word-index]');
-    const currentWordElement = wordElements[currentWordIndex] as HTMLElement;
-    
-    if (currentWordElement) {
-      const containerHeight = container.clientHeight;
-      const elementTop = currentWordElement.offsetTop;
-      const elementHeight = currentWordElement.clientHeight;
-      
-      const scrollPosition = elementTop - (containerHeight / 2) + (elementHeight / 2);
-      
-      container.scrollTo({
-        top: scrollPosition,
-        behavior: 'smooth'
-      });
-    }
-  }, [currentWordIndex]);
-
-  // Modify the handleInputChange function
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (isFinished || !isTestActive || !canStartTyping) return;
-
-    const value = e.target.value;
-    inputRef.current?.focus(); // Keep focus
-
-    // Check if we can type the current word
-    const currentLyric = syncedLyrics[currentWordIndex];
-    if (!currentLyric || currentPosition < currentLyric.startTimeMs) {
-      return;
-    }
-
-    // Start the timer if it hasn't started yet
-    if (!startTime) {
-      setStartTime(Date.now());
-      timerInterval.current = setInterval(() => {
-        setElapsedTime((prevTime) => prevTime + 1);
-      }, 1000);
-    }
-
-    // Handle space to move to next word
-    if (value.endsWith(" ")) {
-      const word = value.trim();
-      const currentWord = words.flat()[currentWordIndex];
-
-      // Update correct characters for the current word
-      const offset = getCharacterOffset(currentWordIndex);
-      const newCorrectChars = [...correctChars];
-      for (let i = 0; i < currentWord.length; i++) {
-        newCorrectChars[offset + i] = word[i] === currentWord[i];
-      }
-      setCorrectChars(newCorrectChars);
-
-      // Check if we can move to the next word
-      const nextWordIndex = currentWordIndex + 1;
-      const nextLyric = syncedLyrics[nextWordIndex];
-      
-      if (nextLyric && currentPosition < nextLyric.startTimeMs) {
-        // Don't allow moving to next word if its lyric hasn't started
-        return;
-      }
-
-      if (currentWordIndex === words.flat().length - 1) {
-        finishTest();
-      } else {
-        setCurrentWordIndex(nextWordIndex);
-        setCurrentCharIndex(0);
-        // Scroll to the next word after state update
-        setTimeout(scrollTypingBoxToCurrentWord, 0);
-      }
-      setInput("");
-      inputRef.current?.focus(); // Keep focus after space
-    } else {
-      const currentWord = words.flat()[currentWordIndex];
-      const offset = getCharacterOffset(currentWordIndex);
-      const newCorrectChars = [...correctChars];
-
-      // Update correct characters as user types
-      for (let i = 0; i < value.length; i++) {
-        newCorrectChars[offset + i] = value[i] === currentWord[i];
-      }
-      setCorrectChars(newCorrectChars);
-      setCurrentCharIndex(value.length);
-      setInput(value);
-    }
-  };
-
-  // Get character class
-  const getCharacterClass = (wordIndex: number, charIndex: number) => {
+  // Memoize getCharacterClass to prevent unnecessary recalculations
+  const getCharacterClass = useCallback((wordIndex: number, charIndex: number) => {
     const offset = getCharacterOffset(wordIndex);
     const absoluteIndex = offset + charIndex;
 
@@ -474,15 +355,80 @@ export default function Home() {
         : "text-error transition-colors duration-200";
     }
     return "text-textDark transition-colors duration-200";
-  };
+  }, [currentWordIndex, currentCharIndex, input.length, correctChars, getCharacterOffset]);
+
+  // Memoize handleInputChange to prevent unnecessary recreations
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    if (isFinished || !isTestActive || !canStartTyping) return;
+
+    const value = e.target.value;
+    inputRef.current?.focus();
+
+    // Set start time on first input
+    if (!startTime) {
+      setStartTime(Date.now());
+      // Start tracking elapsed time
+      const timer = setInterval(() => {
+        setElapsedTime(prev => prev + 1);
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+
+    if (value.endsWith(" ")) {
+      const word = value.trim();
+      const currentWord = words.flat()[currentWordIndex];
+
+      // Batch state updates
+      const newCorrectChars = [...correctChars];
+      const offset = getCharacterOffset(currentWordIndex);
+      for (let i = 0; i < currentWord.length; i++) {
+        newCorrectChars[offset + i] = word[i] === currentWord[i];
+      }
+
+      // Use a single setState call with all updates
+      if (currentWordIndex === words.flat().length - 1) {
+        requestAnimationFrame(() => {
+          setCorrectChars(newCorrectChars);
+          finishTest();
+        });
+      } else {
+        requestAnimationFrame(() => {
+          setCorrectChars(newCorrectChars);
+          setCurrentWordIndex(prev => prev + 1);
+          setCurrentCharIndex(0);
+          setInput("");
+        });
+      }
+    } else {
+      // Batch updates for character typing
+      requestAnimationFrame(() => {
+        setInput(value);
+        setCurrentCharIndex(value.length);
+
+        const currentWord = words.flat()[currentWordIndex];
+        const offset = getCharacterOffset(currentWordIndex);
+        const newCorrectChars = [...correctChars];
+        for (let i = 0; i < value.length; i++) {
+          newCorrectChars[offset + i] = value[i] === currentWord[i];
+        }
+        setCorrectChars(newCorrectChars);
+      });
+    }
+  }, [currentWordIndex, words, correctChars, isFinished, isTestActive, canStartTyping, getCharacterOffset, startTime, finishTest]);
 
   // Handle end test
   const handleEndTest = () => {
-    setTestDuration(elapsedTime);
+    if (!startTime) {
+      setStartTime(Date.now() - 1000); // Set minimum 1 second if ending before typing
+    }
+    
+    // Stop the music
     if (isPlaying) {
       setIsPlaying(false);
       controlSpotifyPlayer('pause');
     }
+
+    // Calculate and show results
     finishTest();
   };
 
@@ -543,9 +489,8 @@ export default function Home() {
               />
             )}
 
-            {/* Main content area with typing box and lyrics progression */}
-            <div className="flex gap-4">
-              <TypingBox
+            <div className="flex gap-4 h-full">
+              <MemoizedTypingContainer
                 words={words}
                 currentWordIndex={currentWordIndex}
                 currentCharIndex={currentCharIndex}
@@ -553,7 +498,6 @@ export default function Home() {
                 input={input}
                 isFinished={isFinished}
                 canStartTyping={canStartTyping}
-                typingContainerRef={typingContainerRef}
                 inputRef={inputRef}
                 onInputChange={handleInputChange}
                 getCharacterClass={getCharacterClass}
@@ -590,19 +534,19 @@ export default function Home() {
               <div className="text-center">
                 <div className="grid grid-cols-3 gap-4 mb-6">
                   <div className="p-4 rounded-lg bg-[#2c2e31] shadow-lg">
-                    <div className="text-3xl font-bold text-primary">
+                    <div className="text-3xl font-bold text-text">
                       {wpm}
                     </div>
                     <div className="text-sm text-textDark">WPM</div>
                   </div>
                   <div className="p-4 rounded-lg bg-[#2c2e31] shadow-lg">
-                    <div className="text-3xl font-bold text-primary">
+                    <div className="text-3xl font-bold text-text">
                       {rawWPM}
                     </div>
                     <div className="text-sm text-textDark">Raw WPM</div>
                   </div>
                   <div className="p-4 rounded-lg bg-[#2c2e31] shadow-lg">
-                    <div className="text-3xl font-bold text-primary">
+                    <div className="text-3xl font-bold text-text">
                       {accuracy}%
                     </div>
                     <div className="text-sm text-textDark">Accuracy</div>
