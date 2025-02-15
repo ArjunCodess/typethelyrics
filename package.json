@@ -10,6 +10,8 @@
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.1.2",
+    "@supabase/auth-helpers-nextjs": "^0.10.0",
+    "@supabase/supabase-js": "^2.48.1",
     "@types/spotify-web-api-node": "^5.0.7",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

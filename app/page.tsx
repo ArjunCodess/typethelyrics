@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { Keyboard, RotateCcw, Info, Music, SquareX } from "lucide-react";
+import { Keyboard, Info, Music, SquareX, LogIn, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type React from "react";
 import type { LyricsResponse, TrackDetails } from "@/components/types";
@@ -9,6 +9,9 @@ import URLInput from "@/components/game/url-input";
 import SpotifyPlayer from "@/components/spotify/spotify-player";
 import LyricsBox from "@/components/lyrics/lyrics-box";
 import MemoizedTypingContainer from "@/components/typing/memoized-typing-box";
+import { supabase } from "@/lib/supabase";
+import { User } from "@supabase/supabase-js";
+import Leaderboard from "@/components/leaderboard/leaderboard";
 
 export default function Home() {
   const [spotifyUrl, setSpotifyUrl] = useState("");
@@ -44,6 +47,8 @@ export default function Home() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [spotifyTrackId, setSpotifyTrackId] = useState<string | null>(null);
   const spotifyEmbedRef = useRef<HTMLIFrameElement>(null);
+
+  const [user, setUser] = useState<User | null>(null);
 
   const scrollLyricIntoView = useCallback((index: number) => {
     if (!lyricsContainerRef.current) return;
@@ -122,6 +127,35 @@ export default function Home() {
     words.flat().slice(0, wordIndex).join(" ").length + (wordIndex > 0 ? 1 : 0)
   , [words]);
 
+  const updateUserScore = useCallback(async (wpm: number, accuracy: number) => {
+    try {
+      const response = await fetch('/api/scores', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          wpm,
+          accuracy,
+          songId: spotifyTrackId,
+          userId: user?.id
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to update score');
+      }
+
+      const { score, totalScore } = await response.json();
+      
+      // You can show a notification or update UI to show the earned score
+      console.log(`Earned ${score} points! Total score: ${totalScore}`);
+    } catch (error) {
+      console.error('Error updating score:', error);
+    }
+  }, [spotifyTrackId, user?.id]);
+
   // Memoize finishTest
   const finishTest = useCallback(() => {
     if (!startTime) return;
@@ -164,7 +198,12 @@ export default function Home() {
     setWPM(Math.min(calculatedWPM, 500));
     setAccuracy(calculatedAccuracy);
     setIsFinished(true);
-  }, [startTime, currentWordIndex, words, input.length, correctChars, getCharacterOffset]);
+
+    // Update user score if logged in
+    if (user) {
+      updateUserScore(calculatedWPM, calculatedAccuracy);
+    }
+  }, [updateUserScore, startTime, currentWordIndex, words, input.length, correctChars, getCharacterOffset, user]);
 
   // Initialize test
   const initializeTest = useCallback((lyrics: string, syncedLyrics?: { startTimeMs: number; words: string; }[]) => {
@@ -248,39 +287,18 @@ export default function Home() {
     }, 100);
   }, [filters]);
 
-  // Reset test
-  const resetTest = useCallback(() => {
-    setInput("");
-    setCurrentWordIndex(0);
-    setCurrentCharIndex(0);
-    setStartTime(null);
-    setIsFinished(false);
-    setWPM(0);
-    setAccuracy(0);
-    setCorrectChars(new Array(words.flat().join(" ").length).fill(false));
-    inputRef.current?.focus();
-    setElapsedTime(0);
-    setTestDuration(null);
-    setCanStartTyping(false);
-    if (isPlaying) {
-      setIsPlaying(false);
-      controlSpotifyPlayer('pause');
-    }
-  }, [words, isPlaying]);
-
   // Extract track ID from Spotify URL
   const extractTrackId = (url: string) => {
     const match = url.match(/track\/([a-zA-Z0-9]+)/);
     return match ? match[1] : null;
   };
 
-  // Handle URL submit
   const handleUrlSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
     setIsTestActive(false);
-    setCanStartTyping(false); // Reset typing state
+    setCanStartTyping(false);
 
     if (!spotifyUrl.includes("spotify.com/track/")) {
       setError("Please enter a valid Spotify track URL");
@@ -294,9 +312,12 @@ export default function Home() {
       setLoading(false);
       return;
     }
+    
+    // Set the Spotify track ID for the embed immediately
     setSpotifyTrackId(trackId);
 
     try {
+      // First fetch lyrics
       const response = await fetch("/api/lyrics", {
         method: "POST",
         headers: {
@@ -319,7 +340,25 @@ export default function Home() {
       };
 
       setTrackDetails(cleanTrackDetails);
-      // Pass both regular lyrics and synced lyrics
+      
+      // Only track the song play after lyrics are successfully fetched
+      const response2 = await fetch('/api/songs', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          songDetails: cleanTrackDetails, 
+          spotifyUrl,
+          userId: user?.id
+        }),
+      });
+
+      if (!response2.ok) {
+        console.error('Error tracking song:', await response2.json());
+      }
+      
+      // Initialize the test
       initializeTest(data.lyrics, data.syncedLyrics);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
@@ -450,12 +489,58 @@ export default function Home() {
     return () => clearInterval(focusInterval);
   }, [isTestActive, isFinished, canStartTyping]);
 
+  useEffect(() => {
+    // Check current session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+    });
+
+    // Listen for auth changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+  };
+
   return (
     <div className="min-h-screen bg-background text-text flex flex-col items-center p-4 font-mono">
       <header className="w-full max-w-3xl flex items-center justify-between mb-8">
         <div className="flex items-center gap-2">
           <Keyboard className="w-6 h-6 text-primary" />
           <span className="text-lg font-bold text-primary">TypeTheLyrics</span>
+        </div>
+        <div className="flex items-center gap-4">
+          {user ? (
+            <div className="flex items-center gap-4">
+              <span className="text-textDark">{user.user_metadata.username}</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleSignOut}
+                className="flex items-center gap-2 text-textDark hover:text-textDark/90"
+              >
+                <LogOut className="w-4 h-4" />
+                Sign Out
+              </Button>
+            </div>
+          ) : (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => window.location.href = '/auth'}
+              className="flex items-center gap-2 text-textDark hover:text-textDark/90"
+            >
+              <LogIn className="w-4 h-4" />
+              Sign In (to save your scores)
+            </Button>
+          )}
         </div>
         {trackDetails && (
           <div className="flex items-center gap-4">
@@ -469,15 +554,20 @@ export default function Home() {
 
       <main className="w-full max-w-7xl">
         {!isTestActive ? (
-          <URLInput
-            spotifyUrl={spotifyUrl}
-            onUrlChange={handleUrlChange}
-            onSubmit={handleUrlSubmit}
-            loading={loading}
-            error={error}
-            filters={filters}
-            onFilterChange={handleFilterChange}
-          />
+          <>
+            <URLInput
+              spotifyUrl={spotifyUrl}
+              onUrlChange={handleUrlChange}
+              onSubmit={handleUrlSubmit}
+              loading={loading}
+              error={error}
+              filters={filters}
+              onFilterChange={handleFilterChange}
+            />
+            <div className="mt-8 max-w-4xl mx-auto">
+              <Leaderboard />
+            </div>
+          </>
         ) : (
           <div className="flex flex-col gap-4">
             {spotifyTrackId && (
@@ -554,17 +644,9 @@ export default function Home() {
                 </div>
                 <div className="flex gap-2 justify-center">
                   <Button
-                    onClick={resetTest}
-                    variant="outline"
-                    className="gap-2 bg-primary text-background hover:bg-primary/90"
-                  >
-                    <RotateCcw className="w-4 h-4" />
-                    Retry Song
-                  </Button>
-                  <Button
                     onClick={() => setIsTestActive(false)}
                     variant="outline"
-                    className="gap-2 bg-[#2c2e31] text-text hover:bg-[#2c2e31]/90"
+                    className="gap-2 bg-[#2c2e31] text-text hover:bg-[#2c2e31]/90 hover:text-text/60"
                   >
                     <Music className="w-4 h-4" />
                     New Song
