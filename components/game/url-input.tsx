@@ -15,17 +15,35 @@ interface URLInputProps {
   onFilterChange: (key: 'lowercase' | 'noPunctuation') => void;
 }
 
-const URLInput = memo(({ 
-  spotifyUrl, 
-  onUrlChange, 
-  onSubmit, 
-  loading, 
+const URLInput = memo(({
+  spotifyUrl,
+  onUrlChange,
+  onSubmit,
+  loading,
   error,
   filters,
-  onFilterChange 
+  onFilterChange
 }: URLInputProps) => {
   return (
     <div className="flex flex-col items-center gap-4 max-w-4xl mx-auto">
+      <div className="w-full flex flex-col gap-2">
+        <div className="bg-zinc-800 rounded-lg px-4 py-3 text-sm text-zinc-300 flex items-start gap-3 border border-zinc-700">
+          <span className="text-lg leading-none mt-0.5">🎵</span>
+          <p>
+            <span className="text-yellow-400 font-bold">How to get a Spotify link:</span>{" "}
+            Right-click a track in Spotify → <span className="text-white font-semibold">Share</span> → <span className="text-white font-semibold">Copy link to song</span>, then paste it below.
+          </p>
+        </div>
+        <div className="bg-zinc-900 rounded-lg px-4 py-2.5 text-xs text-zinc-400 flex items-start gap-3 border border-zinc-700">
+          <span className="text-lg leading-none mt-0.5">🔊</span>
+          <p>
+            <span className="text-emerald-400 font-semibold">Important update:</span>{" "}
+            This app was built to let you listen to full songs while typing the lyrics in real-time.
+            Unfortunately, due to Spotify&apos;s restrictions, free users can now only hear a 30-second preview — Premium users still get full playback.
+            I&apos;m sorry about this, it&apos;s not something I can control.
+          </p>
+        </div>
+      </div>
       <form onSubmit={onSubmit} className="w-full">
         <div className="flex flex-col gap-4">
           <input

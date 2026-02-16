@@ -9,11 +9,11 @@ interface SpotifyPlayerProps {
   spotifyEmbedRef: RefObject<HTMLIFrameElement | null>;
 }
 
-const SpotifyPlayer = memo(({ 
-  spotifyTrackId, 
-  isPlaying, 
+const SpotifyPlayer = memo(({
+  spotifyTrackId,
+  isPlaying,
   onTogglePlay,
-  spotifyEmbedRef 
+  spotifyEmbedRef
 }: SpotifyPlayerProps) => {
   return (
     <>
@@ -27,12 +27,12 @@ const SpotifyPlayer = memo(({
         {isPlaying ? 'Pause' : 'Play'}
       </Button>
 
-      <div className="mb-4 h-[80px]">
+      <div className="mb-4 h-[152px]">
         <iframe
           ref={spotifyEmbedRef}
           src={`https://open.spotify.com/embed/track/${spotifyTrackId}?utm_source=generator&theme=0`}
           width="100%"
-          height="80"
+          height="152"
           allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
           loading="lazy"
           className="rounded-lg"

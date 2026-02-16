@@ -52,16 +52,16 @@ export default function Home() {
 
   const scrollLyricIntoView = useCallback((index: number) => {
     if (!lyricsContainerRef.current) return;
-    
+
     const container = lyricsContainerRef.current;
     const lyricElements = container.children;
     if (index >= 0 && index < lyricElements.length) {
       const lyricElement = lyricElements[index] as HTMLDivElement;
       const containerHeight = container.clientHeight;
       const lyricHeight = lyricElement.clientHeight;
-      
+
       const scrollPosition = lyricElement.offsetTop - (containerHeight / 2) + (lyricHeight / 2);
-      
+
       container.scrollTo({
         top: scrollPosition,
         behavior: 'smooth'
@@ -97,7 +97,7 @@ export default function Home() {
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       if (event.origin !== "https://open.spotify.com") return;
-      
+
       const data = event.data;
       if (typeof data === 'object' && data.type === 'playback_update' && data.payload) {
         handlePositionUpdate(data.payload.position);
@@ -123,9 +123,9 @@ export default function Home() {
   }, [currentPosition, syncedLyrics, scrollLyricIntoView]);
 
   // Memoize getCharacterOffset
-  const getCharacterOffset = useCallback((wordIndex: number) => 
+  const getCharacterOffset = useCallback((wordIndex: number) =>
     words.flat().slice(0, wordIndex).join(" ").length + (wordIndex > 0 ? 1 : 0)
-  , [words]);
+    , [words]);
 
   const updateUserScore = useCallback(async (wpm: number, accuracy: number) => {
     try {
@@ -148,7 +148,7 @@ export default function Home() {
       }
 
       const { score, totalScore } = await response.json();
-      
+
       // You can show a notification or update UI to show the earned score
       console.log(`Earned ${score} points! Total score: ${totalScore}`);
     } catch (error) {
@@ -170,17 +170,17 @@ export default function Home() {
     for (let wordIdx = 0; wordIdx <= currentWordIndex; wordIdx++) {
       const word = words.flat()[wordIdx];
       if (!word) continue;
-      
+
       const offset = getCharacterOffset(wordIdx);
       const charLimit = wordIdx === currentWordIndex ? input.length : word.length;
-      
+
       for (let charIdx = 0; charIdx < charLimit; charIdx++) {
         totalCharactersTyped++;
         if (correctChars[offset + charIdx]) {
           correctCharactersTyped++;
         }
       }
-      
+
       if (wordIdx < currentWordIndex) {
         totalCharactersTyped++;
         correctCharactersTyped++;
@@ -273,7 +273,7 @@ export default function Home() {
       setIsPlaying(true);
       // First start the playback
       controlSpotifyPlayer('play');
-      
+
       // Then start checking position after a short delay
       setTimeout(() => {
         if (spotifyEmbedRef.current?.contentWindow) {
@@ -312,7 +312,7 @@ export default function Home() {
       setLoading(false);
       return;
     }
-    
+
     // Set the Spotify track ID for the embed immediately
     setSpotifyTrackId(trackId);
 
@@ -340,15 +340,15 @@ export default function Home() {
       };
 
       setTrackDetails(cleanTrackDetails);
-      
+
       // Only track the song play after lyrics are successfully fetched
       const response2 = await fetch('/api/songs', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ 
-          songDetails: cleanTrackDetails, 
+        body: JSON.stringify({
+          songDetails: cleanTrackDetails,
           spotifyUrl,
           userId: user?.id
         }),
@@ -357,7 +357,7 @@ export default function Home() {
       if (!response2.ok) {
         console.error('Error tracking song:', await response2.json());
       }
-      
+
       // Initialize the test
       initializeTest(data.lyrics, data.syncedLyrics);
     } catch (err) {
@@ -460,7 +460,7 @@ export default function Home() {
     if (!startTime) {
       setStartTime(Date.now() - 1000); // Set minimum 1 second if ending before typing
     }
-    
+
     // Stop the music
     if (isPlaying) {
       setIsPlaying(false);
@@ -571,12 +571,32 @@ export default function Home() {
         ) : (
           <div className="flex flex-col gap-4">
             {spotifyTrackId && (
-              <SpotifyPlayer
-                spotifyTrackId={spotifyTrackId}
-                isPlaying={isPlaying}
-                onTogglePlay={togglePlay}
-                spotifyEmbedRef={spotifyEmbedRef}
-              />
+              <>
+                <SpotifyPlayer
+                  spotifyTrackId={spotifyTrackId}
+                  isPlaying={isPlaying}
+                  onTogglePlay={togglePlay}
+                  spotifyEmbedRef={spotifyEmbedRef}
+                />
+                <div className="flex flex-col gap-2">
+                  <div className="bg-zinc-800 rounded-lg px-4 py-3 text-sm text-zinc-300 flex items-start gap-3 border border-zinc-700">
+                    <span className="text-lg leading-none mt-0.5">🎵</span>
+                    <p>
+                      <span className="text-yellow-400 font-bold">How to get a Spotify link:</span>{" "}
+                      Right-click a track in Spotify → <span className="text-white font-semibold">Share</span> → <span className="text-white font-semibold">Copy link to song</span>, then paste it below.
+                    </p>
+                  </div>
+                  <div className="bg-zinc-900 rounded-lg px-4 py-2.5 text-xs text-zinc-400 flex items-start gap-3 border border-zinc-700">
+                    <span className="text-lg leading-none mt-0.5">🔊</span>
+                    <p>
+                      <span className="text-emerald-400 font-semibold">Important update:</span>{" "}
+                      This app was built to let you listen to full songs while typing the lyrics in real-time.
+                      Unfortunately, due to Spotify&apos;s restrictions, free users can now only hear a 30-second preview — Premium users still get full playback.
+                      I&apos;m sorry about this, it&apos;s not something I can control.
+                    </p>
+                  </div>
+                </div>
+              </>
             )}
 
             <div className="flex gap-4 h-full">
@@ -605,8 +625,8 @@ export default function Home() {
                 <div className="text-sm text-textDark flex items-center gap-2">
                   <Info className="w-4 h-4" />
                   <span>
-                    {!canStartTyping 
-                      ? "Waiting for lyrics to start..." 
+                    {!canStartTyping
+                      ? "Waiting for lyrics to start..."
                       : "Start typing to begin the test..."}
                   </span>
                 </div>
