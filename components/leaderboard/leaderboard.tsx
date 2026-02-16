@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from 'react';
-import { Trophy, Music, Info } from 'lucide-react';
+import { Trophy, Music } from 'lucide-react';
 import Link from 'next/link';
 
 type TopUser = {
@@ -14,7 +14,6 @@ type TopSong = {
   artist: string;
   play_count: number;
   spotify_url: string;
-  most_played_by_username?: string;
 };
 
 export default function Leaderboard() {
@@ -31,12 +30,12 @@ export default function Leaderboard() {
           'Cache-Control': 'no-cache'
         }
       });
-      
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || 'Failed to fetch leaderboard data');
       }
-      
+
       const data = await response.json();
       setTopUsers(data.topUsers);
       setTopSongs(data.topSongs);
@@ -51,7 +50,7 @@ export default function Leaderboard() {
 
   useEffect(() => {
     fetchLeaderboards();
-    
+
     // Refresh every 30 seconds
     const interval = setInterval(fetchLeaderboards, 30000);
     return () => clearInterval(interval);
@@ -107,8 +106,8 @@ export default function Leaderboard() {
         <hr />
         <div className="space-y-3 mt-2">
           {topSongs.map((song, index) => (
-            <div 
-              key={`${song.title}-${song.artist}`} 
+            <div
+              key={`${song.title}-${song.artist}`}
               className="flex items-center justify-between p-2 rounded bg-background"
             >
               <div className="flex items-center gap-3">
@@ -118,17 +117,7 @@ export default function Leaderboard() {
                   <span className="text-xs text-muted-foreground">{song.artist}</span>
                 </Link>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-muted-foreground font-mono">{song.play_count} plays</span>
-                {song.most_played_by_username && (
-                  <div className="relative group">
-                    <Info className="w-4 h-4 text-muted-foreground cursor-help" />
-                    <div className="opacity-0 group-hover:opacity-100 transition-opacity absolute right-0 -top-1 translate-y-[-100%] bg-foreground border border-border rounded-md px-2 py-1 text-xs flex items-center gap-1 whitespace-nowrap">
-                      Most played by: {song.most_played_by_username}
-                    </div>
-                  </div>
-                )}
-              </div>
+              <span className="text-muted-foreground font-mono">{song.play_count} plays</span>
             </div>
           ))}
           {topSongs.length === 0 && (
